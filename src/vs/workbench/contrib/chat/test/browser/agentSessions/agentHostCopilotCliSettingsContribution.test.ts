@@ -101,10 +101,17 @@ suite('AgentHostCopilotCliSettingsContribution', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
 
 	test('forwards the experimentation settings into root config once the schema advertises them', async () => {
+		// The capability-overrides value exercises the whole per-entry surface
+		// (family, effort, tool filters) plus the '*' wildcard — the forwarder
+		// must pass the object through structurally unchanged.
+		const capabilityOverrides = {
+			'preview-model-x': { family: 'claude-opus-4-8', reasoningEffort: 'high', availableTools: ['builtin:*'], excludedTools: ['mcp:*'] },
+			'*': { reasoningEffort: 'medium' },
+		};
 		const { agentHostService } = setup(disposables, {
 			[AgentHostOpus48PromptEnabledSettingId]: true,
 			[AgentHostReasoningEffortOverrideSettingId]: 'xhigh',
-			[AgentHostModelCapabilityOverridesSettingId]: { 'preview-model-x': { family: 'claude-opus-4-8' } },
+			[AgentHostModelCapabilityOverridesSettingId]: capabilityOverrides,
 		});
 		agentHostService.setRootState(makeRootStateWithSchema(fullSchema));
 		await flush();
@@ -116,7 +123,7 @@ suite('AgentHostCopilotCliSettingsContribution', () => {
 		assert.deepStrictEqual(merged, {
 			[CopilotCliConfigKey.Opus48Prompt]: true,
 			[CopilotCliConfigKey.ReasoningEffortOverride]: 'xhigh',
-			[CopilotCliConfigKey.ModelCapabilityOverrides]: { 'preview-model-x': { family: 'claude-opus-4-8' } },
+			[CopilotCliConfigKey.ModelCapabilityOverrides]: capabilityOverrides,
 		});
 	});
 
