@@ -4,9 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { mainWindow } from '../../../../../../base/browser/window.js';
 import { URI } from '../../../../../../base/common/uri.js';
+import { DisposableStore, toDisposable } from '../../../../../../base/common/lifecycle.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../base/test/common/utils.js';
-import { AgentSessionsDataSource, AgentSessionListItem, IAgentSessionsFilter, sessionDateFromNow, getRepositoryName, AgentSessionsSorter, groupAgentSessionsByDate, getAgentSessionStatusIcon } from '../../../browser/agentSessions/agentSessionsViewer.js';
+import { AgentSessionStatusIcon, AgentSessionsDataSource, AgentSessionListItem, IAgentSessionsFilter, sessionDateFromNow, getRepositoryName, AgentSessionsSorter, groupAgentSessionsByDate, getAgentSessionStatusIcon } from '../../../browser/agentSessions/agentSessionsViewer.js';
 import { AgentSessionSection, IAgentSession, IAgentSessionSection, IAgentSessionsModel, isAgentSession, isAgentSessionSection, isAgentSessionShowLess, isAgentSessionShowMore } from '../../../browser/agentSessions/agentSessionsModel.js';
 import { ChatSessionStatus } from '../../../common/chatSessionsService.js';
 import { ITreeSorter } from '../../../../../../base/browser/ui/tree/tree.js';
@@ -15,6 +17,7 @@ import { Event } from '../../../../../../base/common/event.js';
 import { AgentSessionsGrouping, AgentSessionsSorting } from '../../../browser/agentSessions/agentSessionsFilter.js';
 import { shouldShowSessionInPicker } from '../../../browser/agentSessions/agentSessionsPicker.js';
 import { themeColorFromId } from '../../../../../../base/common/themables.js';
+import { TestAccessibilityService } from '../../../../../../platform/accessibility/test/common/testAccessibilityService.js';
 
 suite('sessionDateFromNow', () => {
 
@@ -124,7 +127,7 @@ suite('AgentSessionsDataSource', () => {
 
 	suite('getAgentSessionStatusIcon', () => {
 
-		test('matches sessions window state icons', () => {
+		test('uses compact status icons', () => {
 			const cases = [
 				['read', createMockSession({ id: 'read' })],
 				['unread', createMockSession({ id: 'unread', isRead: false })],
@@ -135,13 +138,76 @@ suite('AgentSessionsDataSource', () => {
 			] as const;
 
 			assert.deepStrictEqual(cases.map(([name, session]) => [name, getAgentSessionStatusIcon(session)]), [
-				['read', { ...Codicon.circleSmallFilled, color: themeColorFromId('agentSessionReadIndicator.foreground') }],
-				['unread', { ...Codicon.circleFilled, color: themeColorFromId('textLink.foreground') }],
-				['archived', { ...Codicon.passFilled, color: themeColorFromId('agentSessionReadIndicator.foreground') }],
-				['in-progress', { ...Codicon.sessionInProgress, color: themeColorFromId('textLink.foreground') }],
-				['needs-input', { ...Codicon.circleFilled, color: themeColorFromId('list.warningForeground') }],
-				['failed', { ...Codicon.error, color: themeColorFromId('errorForeground') }],
+				['read', { ...Codicon.circleSmallFilledCompact, color: themeColorFromId('agentSessionReadIndicator.foreground') }],
+				['unread', { ...Codicon.circleFilledCompact, color: themeColorFromId('textLink.foreground') }],
+				['archived', { ...Codicon.passFilledCompact, color: themeColorFromId('agentSessionReadIndicator.foreground') }],
+				['in-progress', { ...Codicon.sessionInProgressCompact, color: themeColorFromId('textLink.foreground') }],
+				['needs-input', { ...Codicon.circleFilledCompact, color: themeColorFromId('list.warningForeground') }],
+				['failed', { ...Codicon.errorCompact, color: themeColorFromId('errorForeground') }],
 			]);
+		});
+
+		test('renders compact glyphs and scaled spinners in a centered status slot', () => {
+			const store = new DisposableStore();
+			try {
+				const createStatusIcon = (motionReduced: boolean) => {
+					const root = mainWindow.document.createElement('div');
+					root.classList.add('monaco-workbench', motionReduced ? 'monaco-reduce-motion' : 'monaco-enable-motion');
+					const viewer = mainWindow.document.createElement('div');
+					viewer.classList.add('agent-sessions-viewer');
+					const container = mainWindow.document.createElement('div');
+					viewer.appendChild(container);
+					root.appendChild(viewer);
+					mainWindow.document.body.appendChild(root);
+					store.add(toDisposable(() => root.remove()));
+
+					const accessibilityService = new class extends TestAccessibilityService {
+						override isMotionReduced(): boolean {
+							return motionReduced;
+						}
+					}();
+
+					return {
+						container,
+						statusIcon: store.add(new AgentSessionStatusIcon(container, getAgentSessionStatusIcon, accessibilityService)),
+					};
+				};
+
+				const normalMotion = createStatusIcon(false);
+				normalMotion.statusIcon.setStatus(createMockSession({ status: ChatSessionStatus.InProgress }));
+				const inProgressSpinner = normalMotion.container.querySelector<HTMLElement>('.monaco-pixel-spinner');
+				assert.ok(inProgressSpinner);
+				assert.deepStrictEqual({
+					slotWidth: mainWindow.getComputedStyle(normalMotion.container).width,
+					spinnerWidth: mainWindow.getComputedStyle(inProgressSpinner).width,
+					spinnerTransform: mainWindow.getComputedStyle(inProgressSpinner).transform,
+					ariaHidden: inProgressSpinner.getAttribute('aria-hidden'),
+				}, {
+					slotWidth: '16px',
+					spinnerWidth: '16px',
+					spinnerTransform: 'matrix(0.75, 0, 0, 0.75, 0, 0)',
+					ariaHidden: 'true',
+				});
+
+				normalMotion.statusIcon.setStatus(createMockSession({ status: ChatSessionStatus.NeedsInput }));
+				assert.ok(normalMotion.container.querySelector('.monaco-pixel-spinner-ring'));
+
+				const reducedMotion = createStatusIcon(true);
+				reducedMotion.statusIcon.setStatus(createMockSession({ status: ChatSessionStatus.NeedsInput }));
+				const needsInputGlyph = reducedMotion.container.querySelector<HTMLElement>('.codicon');
+				assert.ok(needsInputGlyph);
+				assert.deepStrictEqual({
+					glyphFontSize: mainWindow.getComputedStyle(needsInputGlyph).fontSize,
+					iconAnimation: mainWindow.getComputedStyle(reducedMotion.container).animationName,
+					hasSpinner: !!reducedMotion.container.querySelector('.monaco-pixel-spinner'),
+				}, {
+					glyphFontSize: '12px',
+					iconAnimation: 'none',
+					hasSpinner: false,
+				});
+			} finally {
+				store.dispose();
+			}
 		});
 	});
 

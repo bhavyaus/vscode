@@ -96,7 +96,7 @@ interface IAgentSessionItemTemplate {
 	readonly disposables: IDisposable;
 }
 
-class AgentSessionStatusIcon extends Disposable {
+export class AgentSessionStatusIcon extends Disposable {
 
 	private static readonly PIXEL_SPINNER_GRID_KEY = '__pixel_spinner_grid__';
 	private static readonly PIXEL_SPINNER_RING_KEY = '__pixel_spinner_ring__';
@@ -175,26 +175,26 @@ class AgentSessionStatusIcon extends Disposable {
 
 export function getAgentSessionStatusIcon(session: IAgentSession): ThemeIcon {
 	if (session.status === AgentSessionStatus.InProgress) {
-		return { ...Codicon.sessionInProgress, color: themeColorFromId('textLink.foreground') };
+		return { ...Codicon.sessionInProgressCompact, color: themeColorFromId('textLink.foreground') };
 	}
 
 	if (session.status === AgentSessionStatus.NeedsInput) {
-		return { ...Codicon.circleFilled, color: themeColorFromId('list.warningForeground') };
+		return { ...Codicon.circleFilledCompact, color: themeColorFromId('list.warningForeground') };
 	}
 
 	if (session.status === AgentSessionStatus.Failed) {
-		return { ...Codicon.error, color: themeColorFromId('errorForeground') };
+		return { ...Codicon.errorCompact, color: themeColorFromId('errorForeground') };
 	}
 
 	if (session.isArchived()) {
-		return { ...Codicon.passFilled, color: themeColorFromId('agentSessionReadIndicator.foreground') };
+		return { ...Codicon.passFilledCompact, color: themeColorFromId('agentSessionReadIndicator.foreground') };
 	}
 
 	if (!session.isRead()) {
-		return { ...Codicon.circleFilled, color: themeColorFromId('textLink.foreground') };
+		return { ...Codicon.circleFilledCompact, color: themeColorFromId('textLink.foreground') };
 	}
 
-	return { ...Codicon.circleSmallFilled, color: themeColorFromId('agentSessionReadIndicator.foreground') };
+	return { ...Codicon.circleSmallFilledCompact, color: themeColorFromId('agentSessionReadIndicator.foreground') };
 }
 
 export interface IAgentSessionRendererOptions {

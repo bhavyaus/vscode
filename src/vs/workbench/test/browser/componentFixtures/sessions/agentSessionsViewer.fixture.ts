@@ -16,6 +16,8 @@ import { IMarkdownRendererService, MarkdownRendererService } from '../../../../.
 import { IProductService } from '../../../../../platform/product/common/productService.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { TestConfigurationService } from '../../../../../platform/configuration/test/common/testConfigurationService.js';
+import { IAccessibilityService } from '../../../../../platform/accessibility/common/accessibility.js';
+import { TestAccessibilityService } from '../../../../../platform/accessibility/test/common/testAccessibilityService.js';
 import { EditorMarkdownCodeBlockRenderer } from '../../../../../editor/browser/widget/markdownRenderer/browser/editorMarkdownCodeBlockRenderer.js';
 import { AgentSessionRenderer, AgentSessionSectionRenderer, IAgentSessionRendererOptions } from '../../../../contrib/chat/browser/agentSessions/agentSessionsViewer.js';
 import { IChatSessionsService } from '../../../../contrib/chat/common/chatSessionsService.js';
@@ -95,7 +97,7 @@ function createMockApprovalModel(sessionResource: URI, info: IAgentSessionApprov
 	}();
 }
 
-function renderSessionItem(ctx: ComponentFixtureContext, session: IAgentSession, approvalModel?: AgentSessionApprovalModel): void {
+function renderSessionItem(ctx: ComponentFixtureContext, session: IAgentSession, approvalModel?: AgentSessionApprovalModel, motionReduced = true): void {
 	const { container, disposableStore } = ctx;
 
 	const instantiationService = createEditorServices(disposableStore, {
@@ -120,6 +122,11 @@ function renderSessionItem(ctx: ComponentFixtureContext, session: IAgentSession,
 				override hasPendingResponse() { return false; }
 				override hasLastPlayed() { return false; }
 				override getLastPlayed() { return undefined; }
+			}());
+			reg.defineInstance(IAccessibilityService, new class extends TestAccessibilityService {
+				override isMotionReduced(): boolean {
+					return motionReduced;
+				}
 			}());
 		},
 	});
@@ -150,6 +157,32 @@ function renderSessionItem(ctx: ComponentFixtureContext, session: IAgentSession,
 		renderer.disposeElement(treeNode, 0, template);
 		renderer.disposeTemplate(template);
 	}));
+}
+
+function renderStatusIconVariants(ctx: ComponentFixtureContext, motionReduced: boolean): void {
+	const now = Date.now();
+	ctx.container.classList.toggle('monaco-reduce-motion', motionReduced);
+	ctx.container.classList.toggle('monaco-enable-motion', !motionReduced);
+	const cases = [
+		{ label: 'Completed read', status: AgentSessionStatus.Completed },
+		{ label: 'Completed unread', status: AgentSessionStatus.Completed, isRead: () => false },
+		{ label: 'Archived', status: AgentSessionStatus.Completed, isArchived: () => true },
+		{ label: 'In progress', status: AgentSessionStatus.InProgress },
+		{ label: 'Needs input', status: AgentSessionStatus.NeedsInput },
+		{ label: 'Failed', status: AgentSessionStatus.Failed },
+	] as const;
+
+	for (const status of cases) {
+		renderSessionItem(ctx, createMockSession({
+			...status,
+			providerType: AgentSessionProviders.Local,
+			timing: {
+				created: now - 5 * 60 * 1000,
+				lastRequestStarted: now - 2 * 60 * 1000,
+				lastRequestEnded: status.status === AgentSessionStatus.Completed || status.status === AgentSessionStatus.Failed ? now - 60 * 1000 : undefined,
+			},
+		}), undefined, motionReduced);
+	}
 }
 
 function renderSectionItem(ctx: ComponentFixtureContext, section: IAgentSessionSection): void {
@@ -196,6 +229,10 @@ function renderSectionItem(ctx: ComponentFixtureContext, section: IAgentSessionS
 export default defineThemedFixtureGroup({
 
 	// --- Status variants ---
+
+	ReducedMotionStatusIconVariants: defineComponentFixture({
+		render: ctx => renderStatusIconVariants(ctx, true),
+	}),
 
 	CompletedRead: defineComponentFixture({
 		render: (ctx) => {
